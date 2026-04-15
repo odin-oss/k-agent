@@ -10,8 +10,6 @@ use crate::kubernetes_objects::pvc::{CreatePvcProps, Pvc};
 use crate::kubernetes_objects::registry_hub::{CreateRegistryHubProps, DeleteRegistryHubProps, RegistryHub};
 use crate::kubernetes_objects::service::{CreateServiceProps, Service, SvcType};
 
-// ── Errors ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Error)]
 pub enum OrchestratorError {
     #[error("Invalid hash: must be exactly 6 characters")]
@@ -38,7 +36,6 @@ pub enum OrchestratorError {
     JoinError(String),
 }
 
-// ── Interface (app definition from environment) ───────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct AppInterface {
@@ -63,8 +60,6 @@ pub struct AppInterface {
     pub volume_type: crate::kubernetes_objects::deployment::VolumeType,
 }
 
-// ── Create Props ──────────────────────────────────────────────────────────────
-
 pub struct CreateProps {
     pub hash: String,
     pub interfaces: Vec<AppInterface>,
@@ -73,8 +68,6 @@ pub struct CreateProps {
     pub password: String,
     pub istio_activated: bool,
 }
-
-// ── Orchestrator ──────────────────────────────────────────────────────────────
 
 pub struct Orchestrator {
     pub deployment: Deployment,
@@ -96,7 +89,6 @@ impl Orchestrator {
         Ok(())
     }
 
-    // ── Deletion ──────────────────────────────────────────────────────────────
 
     /// Execute the full deletion workflow for an application.
     /// Deletes external names, namespace, registry hub, deployments, services,

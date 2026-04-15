@@ -55,7 +55,7 @@ impl Namespace {
         let name = if props.hash == "odin" {
             "odin".to_string()
         } else {
-            format!("n{}", props.hash)
+            format!("odn-{}", props.hash)
         };
         let body = json!({
             "apiVersion": "v1",
@@ -91,9 +91,9 @@ impl Namespace {
     pub async fn delete(&self, props: DeleteNamespaceProps) -> Result<NamespaceResponse, NamespaceError> {
         Self::validate_hash(&props.hash, 6, 6)?;
 
-        let name = format!("n{}", props.hash);
-        let url = format!("{}/api/v1/namespaces/{}", self.base_url, name);
-        let result = self.client.delete(&url).send().await?.json::<Value>().await?;
+        let name: String = format!("odn-{}", props.hash);
+        let url: String = format!("{}/api/v1/namespaces/{}", self.base_url, name);
+        let result: Value = self.client.delete(&url).send().await?.json::<Value>().await?;
 
         Ok(NamespaceResponse {
             result,

@@ -413,7 +413,7 @@ impl Deployment {
         body = Self::add_envs(body, &props.envs, &props.hash, &props.username, &props.password, &props.label, &props.generated_label)?;
         body = Self::add_storage(body, &props.username, &props.label, &props.hash, props.has_storage, &props.volume_type)?;
 
-        let url = format!("{}/apis/apps/v1/namespaces/odin-{}/deployments", self.base_url, props.hash);
+        let url = format!("{}/apis/apps/v1/namespaces/odn-{}/deployments", self.base_url, props.hash);
         println!("[ODIN][K-AGENT][Deployment] POST {url}");
         let response = self.client.post(&url).json(&body).send().await?;
         let status = response.status();
@@ -455,7 +455,7 @@ impl Deployment {
         let mut responses = vec![];
         for name in names {
             let url = format!(
-                "{}/apis/apps/v1/namespaces/odin-{}/deployments/{}",
+                "{}/apis/apps/v1/namespaces/odn-{}/deployments/{}",
                 self.base_url, hash, name
             );
             let result = self.client.delete(&url).send().await?.json::<Value>().await?;
@@ -475,7 +475,7 @@ impl Deployment {
         Self::validate_hash(hash)?;
 
         let url = format!(
-            "{}/apis/apps/v1/namespaces/odin-{}/deployments?labelSelector=type=Deployment,hash={}",
+            "{}/apis/apps/v1/namespaces/odn-{}/deployments?labelSelector=type=Deployment,hash={}",
             self.base_url, hash, hash
         );
         let result = self.client.get(&url).send().await?.json::<Value>().await?;
@@ -495,7 +495,7 @@ impl Deployment {
                 "spec": { "replicas": replicas }
             });
             let url = format!(
-                "{}/apis/apps/v1/namespaces/odin-{}/deployments/{}/scale",
+                "{}/apis/apps/v1/namespaces/odn-{}/deployments/{}/scale",
                 self.base_url, hash, name
             );
             let result = self.client.put(&url).json(&body).send().await?.json::<Value>().await?;
@@ -544,7 +544,7 @@ impl Deployment {
      */
     pub async fn get_replicasets(&self, hash: &str) -> Result<Value, DeploymentError> {
         Self::validate_hash(hash)?;
-        let url = format!("{}/apis/apps/v1/namespaces/odin-{}/replicasets", self.base_url, hash);
+        let url = format!("{}/apis/apps/v1/namespaces/odn-{}/replicasets", self.base_url, hash);
         let mut result = self.client.get(&url).send().await?.json::<Value>().await?;
         if let Some(items) = result["items"].as_array_mut() {
             for item in items.iter_mut() {
@@ -595,11 +595,11 @@ impl Deployment {
         let body = json!({
             "kind": "Scale",
             "apiVersion": "autoscaling/v1",
-            "metadata": { "name": name, "namespace": format!("odin-{}", hash) },
+            "metadata": { "name": name, "namespace": format!("odn-{}", hash) },
             "spec": { "replicas": replicas }
         });
         let url = format!(
-            "{}/apis/apps/v1/namespaces/odin-{}/deployments/{}/scale",
+            "{}/apis/apps/v1/namespaces/odn-{}/deployments/{}/scale",
             self.base_url, hash, name
         );
         let result = self.client.put(&url).json(&body).send().await?.json::<Value>().await?;

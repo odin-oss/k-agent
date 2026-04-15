@@ -57,7 +57,7 @@ impl NetworkPolicy {
 
         let body = json!({
             "metadata": {
-                "name": format!("kubec-np-odin-kafka-from-n{}", props.hash),
+                "name": format!("kubec-np-odin-kafka-from-odn-{}", props.hash),
                 "namespace": "odin"
             },
             "spec": {
@@ -71,7 +71,7 @@ impl NetworkPolicy {
                     "from": [{
                         "namespaceSelector": {
                             "matchLabels": {
-                                "kubernetes.io/metadata.name": format!("n{}", props.hash)
+                                "kubernetes.io/metadata.name": format!("odn-{}", props.hash)
                             }
                         }
                     }]
@@ -100,7 +100,7 @@ impl NetworkPolicy {
         Self::validate_hash(&props.hash)?;
 
         let url = format!(
-            "{}/apis/networking.k8s.io/v1/namespaces/odin/networkpolicies/kubec-np-odin-kafka-from-n{}",
+            "{}/apis/networking.k8s.io/v1/namespaces/odin/networkpolicies/kubec-np-odin-kafka-from-odn-{}",
             self.base_url, props.hash
         );
         let result = self.client.delete(&url).send().await?.json::<Value>().await?;
