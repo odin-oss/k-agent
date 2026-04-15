@@ -478,7 +478,13 @@ impl Deployment {
             "{}/apis/apps/v1/namespaces/odn-{}/deployments?labelSelector=type=Deployment,hash={}",
             self.base_url, hash, hash
         );
-        let result = self.client.get(&url).send().await?.json::<Value>().await?;
+        println!("[ODIN][K-AGENT][Deployment] GET {url}");
+        let response = self.client.get(&url).send().await?;
+        let status = response.status();
+        let result = response.json::<Value>().await?;
+        if !status.is_success() {
+            eprintln!("[ODIN][K-AGENT][Deployment] Scale list API returned {status}: {result}");
+        }
         let names: Vec<String> = result["items"]
             .as_array()
             .unwrap_or(&vec![])
@@ -486,19 +492,33 @@ impl Deployment {
             .filter_map(|item| item["metadata"]["name"].as_str().map(String::from))
             .collect();
 
+        if names.is_empty() {
+            println!("[ODIN][K-AGENT][Deployment] No deployments found for hash {hash} to scale");
+            return Ok(vec![]);
+        }
+
+        println!("[ODIN][K-AGENT][Deployment] Scaling {} deployment(s) to {replicas} replica(s): {:?}", names.len(), names);
         let mut responses = vec![];
         for name in names {
             let body = json!({
                 "kind": "Scale",
                 "apiVersion": "autoscaling/v1",
-                "metadata": { "name": name, "namespace": format!("odin-{}", hash) },
+                "metadata": { "name": name, "namespace": format!("odn-{}", hash) },
                 "spec": { "replicas": replicas }
             });
             let url = format!(
                 "{}/apis/apps/v1/namespaces/odn-{}/deployments/{}/scale",
                 self.base_url, hash, name
             );
-            let result = self.client.put(&url).json(&body).send().await?.json::<Value>().await?;
+            println!("[ODIN][K-AGENT][Deployment] PUT {url}");
+            let response = self.client.put(&url).json(&body).send().await?;
+            let status = response.status();
+            let result = response.json::<Value>().await?;
+            if !status.is_success() {
+                eprintln!("[ODIN][K-AGENT][Deployment] Scale API returned {status}: {result}");
+            } else {
+                println!("[ODIN][K-AGENT][Deployment] Scaled {name} to {replicas} replica(s)");
+            }
             responses.push(DeploymentResponse {
                 result,
                 r#type: "Deployment".to_string(),

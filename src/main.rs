@@ -115,7 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Execute application creation
-    let create_props = service::CreateProps {
+    let create_props: service::CreateProps = service::CreateProps {
         hash: "xnxnxn".to_string(),
         interfaces: vec![
             AppInterface {
@@ -169,10 +169,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         istio_activated: conf.KUBERNETES_ISTIO_ACTIVATED,
     };
 
-    match orchestrator.create(create_props).await {
-        Ok(hash) => println!("[ODIN][K-AGENT] Application created successfully with hash: {hash}"),
+    /*match orchestrator.create(create_props).await {
+        Ok(hash) => {
+            println!("[ODIN][K-AGENT] Application created successfully with hash: {hash}");
+        }
         Err(e) => eprintln!("[ODIN][K-AGENT] Application creation failed: {e}"),
+    }*/
+
+    // Shutdown the created application (scale to zero)
+    /*match orchestrator.exec_shutdown("xnxnxn").await {
+        Ok(()) => println!("[ODIN][K-AGENT] Application shut down successfully with hash: xnxnxn"),
+        Err(e) => eprintln!("[ODIN][K-AGENT] Application shutdown failed: {e}"),
+    }*/
+
+
+    // Start the created application (scale to desired replicas)
+    /*match orchestrator.exec_start("xnxnxn").await {
+        Ok(()) => println!("[ODIN][K-AGENT] Application started successfully with hash: xnxnxn"),
+        Err(e) => eprintln!("[ODIN][K-AGENT] Application start failed: {e}"),
+    }*/
+
+    // Delete the created application
+    match orchestrator.exec_deletion("xnxnxn", conf.KUBERNETES_ISTIO_ACTIVATED).await {
+        Ok(()) => println!("[ODIN][K-AGENT] Application deleted successfully with hash: xnxnxn"),
+        Err(e) => eprintln!("[ODIN][K-AGENT] Application deletion failed: {e}"),
     }
+
+
 
     Ok(())
 }
