@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
-// ── Errors ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Error)]
 pub enum StorageCarrierError {
     #[error("Invalid hash: must be exactly 6 characters")]
@@ -14,8 +12,6 @@ pub enum StorageCarrierError {
     #[error("HTTP request failed: {0}")]
     RequestFailed(#[from] reqwest::Error),
 }
-
-// ── Props ─────────────────────────────────────────────────────────────────────
 
 pub struct SmashExportProps {
     pub hash: String,
@@ -37,8 +33,6 @@ pub struct SmashExportProps {
     pub receiver_email: String,
 }
 
-// ── Response ──────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StorageCarrierResponse {
     pub result: Value,
@@ -46,15 +40,15 @@ pub struct StorageCarrierResponse {
     pub name: String,
 }
 
-// ── Struct ────────────────────────────────────────────────────────────────────
-
+/**
+ * This object is responsible for communicating with the Kubernetes API to manage the storage carrier job.
+ */
 pub struct StorageCarrier {
     client: Client,
     base_url: String,
     kafka_broker: String,
     kafka_topic: String,
 }
-
 impl StorageCarrier {
     pub fn new(
         client: Client,
@@ -69,9 +63,9 @@ impl StorageCarrier {
             kafka_topic: kafka_topic.into(),
         }
     }
-
-    // ── Validation ────────────────────────────────────────────────────────────
-
+    /**
+     * Validates that the hash is exactly 6 characters long.
+     */
     fn validate_hash(hash: &str) -> Result<(), StorageCarrierError> {
         if hash.len() != 6 {
             return Err(StorageCarrierError::InvalidHash);
@@ -79,6 +73,9 @@ impl StorageCarrier {
         Ok(())
     }
 
+    /**
+     * Validates that a given value is not empty.
+     */
     fn validate_not_empty(value: &str, field: &str) -> Result<(), StorageCarrierError> {
         if value.is_empty() {
             return Err(StorageCarrierError::EmptyField(field.to_string()));
@@ -86,8 +83,9 @@ impl StorageCarrier {
         Ok(())
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
-
+    /**
+     * Launches the creation of a Kubernetes Job that will handle the export of data to Smash.
+     */
     pub async fn smash_export(&self, props: SmashExportProps) -> Result<StorageCarrierResponse, StorageCarrierError> {
         Self::validate_hash(&props.hash)?;
         Self::validate_not_empty(&props.upload_id, "upload_id")?;
@@ -99,7 +97,7 @@ impl StorageCarrier {
         let body = json!({
             "metadata": {
                 "name": job_name,
-                "namespace": format!("n{}", props.hash),
+                "namespace": format!("odn-{}", props.hash),
                 "labels": {
                     "hash": props.hash,
                     "app": "odin-storage-carrier"
@@ -154,8 +152,8 @@ impl StorageCarrier {
             }
         });
 
-        let url = format!(
-            "{}/apis/batch/v1/namespaces/n{}/jobs",
+        let url: String = format!(
+            "{}/apis/batch/v1/namespaces/odn-{}/jobs",
             self.base_url, props.hash
         );
         let result = self.client.post(&url).json(&body).send().await?.json::<Value>().await?;

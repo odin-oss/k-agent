@@ -9,7 +9,7 @@ pub enum IngressError {
     InvalidHash,
     #[error("Invalid field '{0}': must not be empty")]
     EmptyField(String),
-    #[error("HTTP request failed: {0}")]
+    #[error("HTTP request failed: {0} (source: {0:?})")]
     RequestFailed(#[from] reqwest::Error),
 }
 
@@ -42,12 +42,15 @@ pub struct IngressResponse {
     pub name: String,
 }
 
+/**
+ * Represents an Ingress in Kubernetes.
+ * This struct provides methods to interact with Kong for managing services, routes, and plugins.
+ */
 pub struct Ingress {
     client: Client,
     kong_url: String,
     tls_odin_monolith: String,
 }
-
 impl Ingress {
     pub fn new(client: Client, kong_url: impl Into<String>, tls_odin_monolith: impl Into<String>) -> Self {
         Self {
@@ -57,6 +60,9 @@ impl Ingress {
         }
     }
 
+    /**
+     * Validates that the hash is exactly 6 characters long.
+     */
     fn validate_hash(hash: &str) -> Result<(), IngressError> {
         if hash.len() != 6 {
             return Err(IngressError::InvalidHash);
@@ -64,6 +70,9 @@ impl Ingress {
         Ok(())
     }
 
+    /**
+     * Validates that a field is not empty.
+     */
     fn validate_not_empty(value: &str, field: &str) -> Result<(), IngressError> {
         if value.is_empty() {
             return Err(IngressError::EmptyField(field.to_string()));
@@ -71,6 +80,9 @@ impl Ingress {
         Ok(())
     }
 
+    /**
+     * Validates that the ports vector is not empty.
+     */
     pub async fn add_in_kong(&self, props: AddInKongProps) -> Result<Vec<IngressResponse>, IngressError> {
         Self::validate_hash(&props.hash)?;
         Self::validate_not_empty(&props.label, "label")?;
@@ -96,9 +108,9 @@ impl Ingress {
         }
 
         // Getting Services from Kong to retrieve their IDs
-        let mut services = vec![];
+        let mut services: Vec<Value> = vec![];
         for port in &props.ports {
-            let service_name = format!(
+            let service_name: String = format!(
                 "{}-{}-{}",
                 props.hash,
                 props.label,
@@ -170,6 +182,10 @@ impl Ingress {
         Ok(responses)
     }
 
+    /**
+     * Launches the deletion of services and routes from Kong.
+     * This will be called when an application is deleted, and it will remove the associated services and routes from Kong.
+     */
     pub async fn delete_from_kong(&self, props: DeleteFromKongProps) -> Result<Vec<IngressResponse>, IngressError> {
         Self::validate_hash(&props.hash)?;
 
@@ -217,8 +233,8 @@ impl Ingress {
         // Delete filtered routes
         for route in &filtered_routes {
             let route_id = route["id"].as_str().unwrap_or_default();
-            let url = format!("{}/routes/{}", self.kong_url, route_id);
-            let result = self.client.delete(&url).send().await?.json::<Value>().await?;
+            let url: String = format!("{}/routes/{}", self.kong_url, route_id);
+            let result: Value = self.client.delete(&url).send().await?.json::<Value>().await?;
             responses.push(IngressResponse {
                 result,
                 r#type: "Route".to_string(),
@@ -229,8 +245,8 @@ impl Ingress {
         // Delete filtered services
         for svc in &filtered_services {
             let svc_id = svc["id"].as_str().unwrap_or_default();
-            let url = format!("{}/services/{}", self.kong_url, svc_id);
-            let result = self.client.delete(&url).send().await?.json::<Value>().await?;
+            let url: String = format!("{}/services/{}", self.kong_url, svc_id);
+            let result: Value = self.client.delete(&url).send().await?.json::<Value>().await?;
             responses.push(IngressResponse {
                 result,
                 r#type: "Service".to_string(),

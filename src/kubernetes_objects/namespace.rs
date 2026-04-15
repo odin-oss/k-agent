@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
-// ── Errors ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Error)]
 pub enum NamespaceError {
     #[error("Invalid hash: must be between 4 and 6 characters")]
@@ -13,17 +11,12 @@ pub enum NamespaceError {
     RequestFailed(#[from] reqwest::Error),
 }
 
-// ── Props ─────────────────────────────────────────────────────────────────────
-
 pub struct CreateNamespaceProps {
     pub hash: String,
 }
-
 pub struct DeleteNamespaceProps {
     pub hash: String,
 }
-
-// ── Response ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NamespaceResponse {
@@ -31,21 +24,21 @@ pub struct NamespaceResponse {
     pub r#type: String,
     pub name: String,
 }
-
-// ── Struct ────────────────────────────────────────────────────────────────────
-
+/**
+ * This object is responsible for communicating with the Kubernetes API to manage the namespaces in the cluster.
+ */
 pub struct Namespace {
     client: Client,
     base_url: String,
 }
-
 impl Namespace {
     pub fn new(client: Client, base_url: impl Into<String>) -> Self {
         Self { client, base_url: base_url.into() }
     }
 
-    // ── Validation ────────────────────────────────────────────────────────────
-
+    /**
+     * Validates that the hash is between 4 and 6 characters long.
+     */
     fn validate_hash(hash: &str, min: usize, max: usize) -> Result<(), NamespaceError> {
         if hash.len() < min || hash.len() > max {
             return Err(NamespaceError::InvalidHash);
@@ -53,17 +46,17 @@ impl Namespace {
         Ok(())
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
-
+    /**
+     * Launches the creation of a namespace in Kubernetes.
+     * This will be called when an application is created, and it will deploy the namespace in the cluster.
+     */
     pub async fn create(&self, props: CreateNamespaceProps) -> Result<NamespaceResponse, NamespaceError> {
         Self::validate_hash(&props.hash, 4, 6)?;
-
         let name = if props.hash == "odin" {
             "odin".to_string()
         } else {
             format!("n{}", props.hash)
         };
-
         let body = json!({
             "apiVersion": "v1",
             "kind": "Namespace",
@@ -91,6 +84,10 @@ impl Namespace {
         })
     }
 
+    /**
+     * Launches the deletion of a namespace in Kubernetes.
+     * This will be called when an application is deleted, and it will remove the namespace from the cluster.
+     */
     pub async fn delete(&self, props: DeleteNamespaceProps) -> Result<NamespaceResponse, NamespaceError> {
         Self::validate_hash(&props.hash, 6, 6)?;
 

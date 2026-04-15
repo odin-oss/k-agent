@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
-// ── Errors ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Error)]
 pub enum NetworkPolicyError {
     #[error("Invalid hash: must be exactly 6 characters")]
@@ -12,8 +10,6 @@ pub enum NetworkPolicyError {
     #[error("HTTP request failed: {0}")]
     RequestFailed(#[from] reqwest::Error),
 }
-
-// ── Props ─────────────────────────────────────────────────────────────────────
 
 pub struct CreateNetworkPolicyProps {
     pub hash: String,
@@ -23,8 +19,6 @@ pub struct DeleteNetworkPolicyProps {
     pub hash: String,
 }
 
-// ── Response ──────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NetworkPolicyResponse {
     pub result: Value,
@@ -32,20 +26,21 @@ pub struct NetworkPolicyResponse {
     pub name: String,
 }
 
-// ── Struct ────────────────────────────────────────────────────────────────────
-
+/**
+ * This object is responsible for managing the network policies in Kubernetes cluster.
+ */
 pub struct NetworkPolicy {
     client: Client,
     base_url: String,
 }
-
 impl NetworkPolicy {
     pub fn new(client: Client, base_url: impl Into<String>) -> Self {
         Self { client, base_url: base_url.into() }
     }
 
-    // ── Validation ────────────────────────────────────────────────────────────
-
+    /**
+     * Validates that the hash is exactly 6 characters long.
+     */
     fn validate_hash(hash: &str) -> Result<(), NetworkPolicyError> {
         if hash.len() != 6 {
             return Err(NetworkPolicyError::InvalidHash);
@@ -53,8 +48,10 @@ impl NetworkPolicy {
         Ok(())
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
-
+    /**
+     * Launches the creation of a network policy in Kubernetes.
+     * This will be called when an application is created, and it will deploy the network policy in the cluster.
+     */
     pub async fn create(&self, props: CreateNetworkPolicyProps) -> Result<NetworkPolicyResponse, NetworkPolicyError> {
         Self::validate_hash(&props.hash)?;
 
@@ -95,6 +92,10 @@ impl NetworkPolicy {
         })
     }
 
+    /**
+     * Launches the deletion of a network policy in Kubernetes.
+     * This will be called when an application is deleted, and it will remove the network policy from the cluster.
+     */
     pub async fn delete(&self, props: DeleteNetworkPolicyProps) -> Result<NetworkPolicyResponse, NetworkPolicyError> {
         Self::validate_hash(&props.hash)?;
 

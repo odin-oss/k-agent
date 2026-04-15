@@ -13,8 +13,6 @@ The deployment is done in two steps :
 
 In the first launch, **do not set** the `AGENT_UUID` variable but set the proper `ODIN_HUB_URL` & `AGENT_LABEL`.
 
-
-
 ### 2. Launch the agent
 
 Now that you have the UUID, you can set the `AGENT_UUID` and launch the agent again. It will now trigger the every 5 sec to tell its status and get the wanted applications state.

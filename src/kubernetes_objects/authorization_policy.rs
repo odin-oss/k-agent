@@ -20,11 +20,13 @@ pub struct AuthorizationPolicyResponse {
     pub name: String,
 }
 
+/**
+ * This object is responsible for communicating with the Kubernetes API to manage Istio AuthorizationPolicies.
+ */
 pub struct AuthorizationPolicy {
     client: Client,
     base_url: String,
 }
-
 impl AuthorizationPolicy {
     pub fn new(client: Client, base_url: impl Into<String>) -> Self {
         Self {
@@ -33,6 +35,9 @@ impl AuthorizationPolicy {
         }
     }
 
+    /**
+     * Validates that the hash is exactly 6 characters long.
+     */
     fn validate_hash(hash: &str) -> Result<(), AuthorizationPolicyError> {
         if hash.len() != 6 {
             return Err(AuthorizationPolicyError::InvalidHash);
@@ -40,6 +45,9 @@ impl AuthorizationPolicy {
         Ok(())
     }
 
+    /**
+     * Creates an Istio AuthorizationPolicy in Kubernetes using the provided hash.
+     */
     pub async fn create(&self, hash: &str) -> Result<AuthorizationPolicyResponse, AuthorizationPolicyError> {
         Self::validate_hash(hash)?;
 
@@ -47,7 +55,7 @@ impl AuthorizationPolicy {
             "kind": "AuthorizationPolicy",
             "apiVersion": "security.istio.io/v1",
             "metadata": {
-                "name": format!("istio-ap-odin-kafka-n{}", hash),
+                "name": format!("istio-ap-odin-kafka-odn-{}", hash),
                 "namespace": "odin"
             },
             "spec": {
@@ -60,7 +68,7 @@ impl AuthorizationPolicy {
                 "rules": [{
                     "from": [{
                         "source": {
-                            "namespaces": [format!("n{}", hash)]
+                            "namespaces": [format!("odn-{}", hash)]
                         }
                     }],
                     "to": [{
@@ -93,13 +101,14 @@ impl AuthorizationPolicy {
         })
     }
 
-    // ── Delete ────────────────────────────────────────────────────────────────
-
+    /**
+     * Deletes an Istio AuthorizationPolicy in Kubernetes based on the provided hash.
+     */
     pub async fn delete(&self, hash: &str) -> Result<AuthorizationPolicyResponse, AuthorizationPolicyError> {
         Self::validate_hash(hash)?;
 
         let url = format!(
-            "{}/apis/security.istio.io/v1/namespaces/odin/authorizationpolicies/istio-ap-odin-kafka-n{}",
+            "{}/apis/security.istio.io/v1/namespaces/odin/authorizationpolicies/istio-ap-odin-kafka-odn-{}",
             self.base_url, hash
         );
 

@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
-// ── Errors ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Error)]
 pub enum RegistryHubError {
     #[error("Invalid hash: must be exactly 6 characters")]
@@ -13,8 +11,6 @@ pub enum RegistryHubError {
     #[error("HTTP request failed: {0}")]
     RequestFailed(#[from] reqwest::Error),
 }
-
-// ── Props ─────────────────────────────────────────────────────────────────────
 
 pub struct CreateRegistryHubProps {
     pub hash: String,
@@ -24,8 +20,6 @@ pub struct DeleteRegistryHubProps {
     pub hash: String,
 }
 
-// ── Response ──────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RegistryHubResponse {
     pub result: Value,
@@ -33,8 +27,10 @@ pub struct RegistryHubResponse {
     pub name: String,
 }
 
-// ── Struct ────────────────────────────────────────────────────────────────────
-
+/**
+ * This object is responsible for communicating with the Kubernetes API to manage the registry hub secret.
+ * It has two main functions: create and delete, which will be called when an application is created or deleted, respectively. 
+ */
 pub struct RegistryHub {
     client: Client,
     base_url: String,
@@ -42,7 +38,6 @@ pub struct RegistryHub {
     registry_username: String,
     registry_password: String,
 }
-
 impl RegistryHub {
     pub fn new(
         client: Client,
@@ -60,17 +55,20 @@ impl RegistryHub {
         }
     }
 
-    // ── Validation ────────────────────────────────────────────────────────────
-
+    /**
+     * Validates that the hash is exactly 6 characters long.
+     */
     fn validate_hash(hash: &str) -> Result<(), RegistryHubError> {
         if hash.len() != 6 {
             return Err(RegistryHubError::InvalidHash);
         }
         Ok(())
     }
-
-    // ── Public API ────────────────────────────────────────────────────────────
-
+    /**
+     * Launches the creation of the registry hub secret in Kubernetes. 
+     * This will be called when an application is created, and it will store the registry credentials in the cluster.
+     * It deploys a Kubernetes secret of type `kubernetes.io/dockerconfigjson` with the registry credentials encoded in base64, from the var env.
+     */
     pub async fn create(&self, props: CreateRegistryHubProps) -> Result<RegistryHubResponse, RegistryHubError> {
         Self::validate_hash(&props.hash)?;
 
@@ -90,7 +88,7 @@ impl RegistryHub {
             },
             "metadata": {
                 "name": "registryhub",
-                "namespace": format!("n{}", props.hash),
+                "namespace": format!("odn-{}", props.hash),
                 "labels": {
                     "type": "RegistryHub",
                     "hash": props.hash,
@@ -99,12 +97,11 @@ impl RegistryHub {
             "type": "kubernetes.io/dockerconfigjson"
         });
 
-        let url = format!(
-            "{}/api/v1/namespaces/n{}/secrets",
+        let url: String = format!(
+            "{}/api/v1/namespaces/odn-{}/secrets",
             self.base_url, props.hash
         );
-        let result = self.client.post(&url).json(&body).send().await?.json::<Value>().await?;
-
+        let result: Value = self.client.post(&url).json(&body).send().await?.json::<Value>().await?;
         Ok(RegistryHubResponse {
             result,
             r#type: "RegistryHub".to_string(),
@@ -112,15 +109,18 @@ impl RegistryHub {
         })
     }
 
+    /**
+     * Launches the deletion of the registry hub secret in Kubernetes. 
+     * This will be called when an application is deleted, and it will remove the registry credentials from the cluster.
+     */
     pub async fn delete(&self, props: DeleteRegistryHubProps) -> Result<RegistryHubResponse, RegistryHubError> {
         Self::validate_hash(&props.hash)?;
 
         let url = format!(
-            "{}/api/v1/namespaces/n{}/secrets/registryhub",
+            "{}/api/v1/namespaces/odn-{}/secrets/registryhub",
             self.base_url, props.hash
         );
-        let result = self.client.delete(&url).send().await?.json::<Value>().await?;
-
+        let result: Value = self.client.delete(&url).send().await?.json::<Value>().await?;
         Ok(RegistryHubResponse {
             result,
             r#type: "RegistryHub".to_string(),

@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
-// ── Errors ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Error)]
 pub enum PvcError {
     #[error("Invalid hash: must be exactly 6 characters")]
@@ -15,8 +13,6 @@ pub enum PvcError {
     RequestFailed(#[from] reqwest::Error),
 }
 
-// ── Props ─────────────────────────────────────────────────────────────────────
-
 pub struct CreatePvcProps {
     pub hash: String,
     pub label: String,
@@ -26,8 +22,6 @@ pub struct GetPvcProps {
     pub hash: String,
 }
 
-// ── Response ──────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PvcResponse {
     pub result: Value,
@@ -35,15 +29,15 @@ pub struct PvcResponse {
     pub name: String,
 }
 
-// ── Struct ────────────────────────────────────────────────────────────────────
-
+/**
+ * This object is responsible for communicating with the Kubernetes API to manage persistent volume claims (PVCs).
+ */
 pub struct Pvc {
     client: Client,
     base_url: String,
     storage_classname: String,
     volume_type: String,
 }
-
 impl Pvc {
     pub fn new(
         client: Client,
@@ -59,8 +53,9 @@ impl Pvc {
         }
     }
 
-    // ── Validation ────────────────────────────────────────────────────────────
-
+    /**
+     * Validates that the hash is exactly 6 characters long.
+     */
     fn validate_hash(hash: &str) -> Result<(), PvcError> {
         if hash.len() != 6 {
             return Err(PvcError::InvalidHash);
@@ -68,6 +63,9 @@ impl Pvc {
         Ok(())
     }
 
+    /**
+     * Validates that a given value is not empty.
+     */
     fn validate_not_empty(value: &str, field: &str) -> Result<(), PvcError> {
         if value.is_empty() {
             return Err(PvcError::EmptyField(field.to_string()));
@@ -75,14 +73,16 @@ impl Pvc {
         Ok(())
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
-
+    /**
+     * Launches the creation of a PVC in Kubernetes.
+     * This will be called when an application is created, and it will deploy the PVC in the cluster.
+     */
     pub async fn create(&self, props: CreatePvcProps) -> Result<PvcResponse, PvcError> {
         Self::validate_hash(&props.hash)?;
         Self::validate_not_empty(&props.label, "label")?;
 
-        let pvc_name = format!("{}{}-pvc", props.label, props.hash);
-        let namespace = format!("n{}", props.hash);
+        let pvc_name: String = format!("{}{}-pvc", props.label, props.hash);
+        let namespace: String = format!("odn-{}", props.hash);
 
         let mut body = json!({
             "metadata": {
@@ -122,11 +122,15 @@ impl Pvc {
         })
     }
 
+    /**
+     * Retrieves the PVCs in Kubernetes for a given hash. 
+     * This will be used to check if the PVC already exists when creating an application, and to retrieve the PVC information when needed.
+     */
     pub async fn get(&self, props: GetPvcProps) -> Result<Value, PvcError> {
         Self::validate_hash(&props.hash)?;
 
         let url = format!(
-            "{}/api/v1/namespaces/n{}/persistentvolumeclaims",
+            "{}/api/v1/namespaces/odn-{}/persistentvolumeclaims",
             self.base_url, props.hash
         );
         let mut result = self.client.get(&url).send().await?.json::<Value>().await?;
@@ -136,7 +140,6 @@ impl Pvc {
                 item["kind"] = json!("PersistentVolumeClaim");
             }
         }
-
         Ok(result)
     }
 }

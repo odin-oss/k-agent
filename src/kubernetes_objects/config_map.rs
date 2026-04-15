@@ -5,8 +5,6 @@ use std::path::Path;
 use thiserror::Error;
 use tokio::fs;
 
-// ── Errors ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Error)]
 pub enum ConfigMapError {
     #[error("Invalid hash: must be exactly 6 characters")]
@@ -18,8 +16,6 @@ pub enum ConfigMapError {
     #[error("HTTP request failed: {0}")]
     RequestFailed(#[from] reqwest::Error),
 }
-
-// ── Props ─────────────────────────────────────────────────────────────────────
 
 pub struct CreateConfigMapProps {
     pub hash: String,
@@ -38,8 +34,6 @@ pub struct UpdateConfigMapProps {
     pub shutable: bool,
 }
 
-// ── Response ──────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConfigMapResponse {
     pub result: Value,
@@ -47,13 +41,13 @@ pub struct ConfigMapResponse {
     pub name: String,
 }
 
-// ── Struct ────────────────────────────────────────────────────────────────────
-
+/**
+ * This object is responsible for communicating with the Kubernetes API to manage ConfigMaps.
+ */
 pub struct ConfigMap {
     client: Client,
     base_url: String,
 }
-
 impl ConfigMap {
     pub fn new(client: Client, base_url: impl Into<String>) -> Self {
         Self {
@@ -62,8 +56,9 @@ impl ConfigMap {
         }
     }
 
-    // ── Validation ────────────────────────────────────────────────────────────
-
+    /**
+     * Validates the provided hash for a ConfigMap.
+     */
     fn validate_hash(hash: &str) -> Result<(), ConfigMapError> {
         if hash.len() != 6 {
             return Err(ConfigMapError::InvalidHash);
@@ -71,6 +66,9 @@ impl ConfigMap {
         Ok(())
     }
 
+    /**
+     * Validates that a field is not empty.
+     */
     fn validate_not_empty(value: &str, field: &str) -> Result<(), ConfigMapError> {
         if value.is_empty() {
             return Err(ConfigMapError::EmptyField(field.to_string()));
@@ -78,14 +76,18 @@ impl ConfigMap {
         Ok(())
     }
 
+    /**
+     * Reads the content of a file asynchronously.
+     */
     async fn read_file(path: &str) -> Result<String, ConfigMapError> {
         fs::read_to_string(Path::new(path))
             .await
             .map_err(|e| ConfigMapError::FileRead(path.to_string(), e))
     }
 
-    // ── Create ────────────────────────────────────────────────────────────────
-
+    /**
+     * Creates a ConfigMap in Kubernetes using the provided properties.
+     */
     pub async fn create(&self, props: CreateConfigMapProps) -> Result<ConfigMapResponse, ConfigMapError> {
         Self::validate_hash(&props.hash)?;
         Self::validate_not_empty(&props.namespace, "namespace")?;
@@ -131,8 +133,9 @@ impl ConfigMap {
         })
     }
 
-    // ── Update ────────────────────────────────────────────────────────────────
-
+    /**
+     * Updates an existing ConfigMap in Kubernetes with new data from a file.
+     */
     pub async fn update(&self, props: UpdateConfigMapProps) -> Result<Value, ConfigMapError> {
         Self::validate_not_empty(&props.namespace, "namespace")?;
         Self::validate_not_empty(&props.name, "name")?;

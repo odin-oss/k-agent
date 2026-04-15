@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
-// ── Errors ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Error)]
 pub enum ServiceError {
     #[error("Invalid hash: must be exactly 6 characters")]
@@ -17,15 +15,11 @@ pub enum ServiceError {
     RequestFailed(#[from] reqwest::Error),
 }
 
-// ── Supporting types ──────────────────────────────────────────────────────────
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SvcType {
     LoadBalancer,
     ClusterIp,
 }
-
-// ── Props ─────────────────────────────────────────────────────────────────────
 
 pub struct CreateServiceProps {
     pub hash: String,
@@ -36,8 +30,6 @@ pub struct CreateServiceProps {
     pub shutable: bool,
 }
 
-// ── Response ──────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ServiceResponse {
     pub result: Value,
@@ -45,20 +37,22 @@ pub struct ServiceResponse {
     pub name: String,
 }
 
-// ── Struct ────────────────────────────────────────────────────────────────────
-
+/**
+ * This object is responsible for communicating with the Kubernetes API to manage services.
+ * It has two main functions: create and delete, which will be called when an application is created or deleted, respectively. 
+ */
 pub struct Service {
     client: Client,
     base_url: String,
 }
-
 impl Service {
     pub fn new(client: Client, base_url: impl Into<String>) -> Self {
         Self { client, base_url: base_url.into() }
     }
 
-    // ── Validation ────────────────────────────────────────────────────────────
-
+    /**
+     * Validates that the hash is exactly 6 characters long, that the label is not empty, and that the ports are valid.
+     */
     fn validate_hash(hash: &str) -> Result<(), ServiceError> {
         if hash.len() != 6 {
             return Err(ServiceError::InvalidHash);
@@ -66,6 +60,9 @@ impl Service {
         Ok(())
     }
 
+    /**
+     * Validates that a given value is not empty.
+     */
     fn validate_not_empty(value: &str, field: &str) -> Result<(), ServiceError> {
         if value.is_empty() {
             return Err(ServiceError::EmptyField(field.to_string()));
@@ -73,15 +70,16 @@ impl Service {
         Ok(())
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
-
+    /**
+     * Launches the creation of a service in Kubernetes.
+     * This will be called when an application is created, and it will deploy the service in the cluster.
+     */
     pub async fn create(&self, props: CreateServiceProps) -> Result<ServiceResponse, ServiceError> {
         Self::validate_hash(&props.hash)?;
         Self::validate_not_empty(&props.label, "label")?;
         if props.port_externe == 0 || props.port_interne == 0 {
             return Err(ServiceError::InvalidPort);
         }
-
         let prefix = match props.svc_type {
             SvcType::ClusterIp => "ci",
             SvcType::LoadBalancer => "lb",
@@ -90,14 +88,13 @@ impl Service {
             SvcType::ClusterIp => "ClusterIP",
             SvcType::LoadBalancer => "LoadBalancer",
         };
-        let service_name = format!("{}{}{}{}", prefix, props.label, props.hash, props.port_externe);
-
+        let service_name: String = format!("{}{}{}{}", prefix, props.label, props.hash, props.port_externe);
         let body = json!({
             "apiVersion": "v1",
             "kind": "Service",
             "metadata": {
                 "name": service_name,
-                "namespace": format!("n{}", props.hash),
+                "namespace": format!("odn-{}", props.hash),
                 "labels": {
                     "type": "Service",
                     "hash": props.hash,
@@ -118,7 +115,7 @@ impl Service {
         });
 
         let url = format!(
-            "{}/api/v1/namespaces/n{}/services",
+            "{}/api/v1/namespaces/odn-{}/services",
             self.base_url, props.hash
         );
         let result = self.client.post(&url).json(&body).send().await?.json::<Value>().await?;
@@ -130,22 +127,49 @@ impl Service {
         })
     }
 
+    /**
+     * Launches the deletion of all services associated with a given hash in Kubernetes.
+     * This will be called when an application is deleted, and it will remove all services.
+     */
     pub async fn delete(&self, hash: &str) -> Result<Vec<ServiceResponse>, ServiceError> {
         Self::validate_hash(hash)?;
 
-        let names = self.get(hash).await?;
+        let url = format!(
+            "{}/api/v1/namespaces/odn-{}/services?labelSelector=hash={}",
+            self.base_url, hash, hash
+        );
+        let result = self.client.get(&url).send().await?.json::<Value>().await?;
+        let names: Vec<String> = result["items"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .filter_map(|item| item["metadata"]["name"].as_str().map(String::from))
+            .collect();
+
         let mut responses = vec![];
         for name in names {
-            responses.push(self.del(hash, &name).await?);
+            let url = format!(
+                "{}/api/v1/namespaces/odn-{}/services/{}",
+                self.base_url, hash, name
+            );
+            let result = self.client.delete(&url).send().await?.json::<Value>().await?;
+            responses.push(ServiceResponse {
+                result,
+                r#type: "Service".to_string(),
+                name,
+            });
         }
         Ok(responses)
     }
 
+    /**
+     * Retrieves all services associated with a given hash in Kubernetes.
+     * This will be called when an application needs to list its services.
+     */
     pub async fn get_services(&self, hash: &str) -> Result<Value, ServiceError> {
         Self::validate_hash(hash)?;
-
         let url = format!(
-            "{}/api/v1/namespaces/n{}/services",
+            "{}/api/v1/namespaces/odn-{}/services",
             self.base_url, hash
         );
         let mut result = self.client.get(&url).send().await?.json::<Value>().await?;
@@ -155,37 +179,6 @@ impl Service {
                 item["kind"] = json!("Service");
             }
         }
-
         Ok(result)
-    }
-
-    // ── Private API ───────────────────────────────────────────────────────────
-
-    async fn get(&self, hash: &str) -> Result<Vec<String>, ServiceError> {
-        let url = format!(
-            "{}/api/v1/namespaces/n{}/services?labelSelector=hash={}",
-            self.base_url, hash, hash
-        );
-        let result = self.client.get(&url).send().await?.json::<Value>().await?;
-        let names = result["items"]
-            .as_array()
-            .unwrap_or(&vec![])
-            .iter()
-            .filter_map(|item| item["metadata"]["name"].as_str().map(String::from))
-            .collect();
-        Ok(names)
-    }
-
-    async fn del(&self, hash: &str, name: &str) -> Result<ServiceResponse, ServiceError> {
-        let url = format!(
-            "{}/api/v1/namespaces/n{}/services/{}",
-            self.base_url, hash, name
-        );
-        let result = self.client.delete(&url).send().await?.json::<Value>().await?;
-        Ok(ServiceResponse {
-            result,
-            r#type: "Service".to_string(),
-            name: name.to_string(),
-        })
     }
 }

@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
 
-// ── Errors ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Error)]
 pub enum DeploymentError {
@@ -18,8 +17,6 @@ pub enum DeploymentError {
     #[error("HTTP request failed: {0}")]
     RequestFailed(#[from] reqwest::Error),
 }
-
-// ── Supporting types ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone)]
 pub struct Port {
@@ -48,8 +45,6 @@ pub enum VolumeType {
     Block,
     Mount,
 }
-
-// ── Props ─────────────────────────────────────────────────────────────────────
 
 pub struct CreateDeploymentProps {
     pub hash: String,
@@ -83,8 +78,6 @@ pub struct RegistryLink {
     pub image_tag: String,
 }
 
-// ── Response ──────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeploymentResponse {
     pub result: Value,
@@ -92,20 +85,21 @@ pub struct DeploymentResponse {
     pub name: String,
 }
 
-// ── Struct ────────────────────────────────────────────────────────────────────
-
+/**
+ * This object is responsible for communicating with the Kubernetes API to manage deployments.
+ */
 pub struct Deployment {
     client: Client,
     base_url: String,
 }
-
 impl Deployment {
     pub fn new(client: Client, base_url: impl Into<String>) -> Self {
         Self { client, base_url: base_url.into() }
     }
 
-    // ── Validation ────────────────────────────────────────────────────────────
-
+    /**
+     * Validates that the hash is exactly 6 characters long.
+     */
     fn validate_hash(hash: &str) -> Result<(), DeploymentError> {
         if hash.len() != 6 {
             return Err(DeploymentError::InvalidHash);
@@ -113,6 +107,9 @@ impl Deployment {
         Ok(())
     }
 
+    /**
+     * Parses a registry link in the format "image:tag".
+     */
     fn parse_registry_link(link: &str) -> Result<RegistryLink, DeploymentError> {
         let parts: Vec<&str> = link.splitn(2, ':').collect();
         if parts.len() != 2 {
@@ -124,13 +121,17 @@ impl Deployment {
         })
     }
 
+    /**
+     * Validates that the bandwidth value is in the correct format (e.g., "100M" or "1G").
+     */
     fn validate_bandwidth(value: &str) -> bool {
         let re = regex::Regex::new(r"^\d+[MG]$").unwrap();
         re.is_match(value)
     }
 
-    // ── Body helpers ──────────────────────────────────────────────────────────
-
+    /**
+     * Adds node selectors to the deployment spec.
+     */
     fn add_node_selectors(
         mut body: Value,
         node_selectors: &[NodeSelector],
@@ -176,6 +177,9 @@ impl Deployment {
         Ok(body)
     }
 
+    /**
+     * Adds service commands to the deployment spec.
+     */
     fn add_service_commands(
         mut body: Value,
         service_command: &str,
@@ -188,6 +192,9 @@ impl Deployment {
         Ok(body)
     }
 
+    /**
+     * Adds arguments to the deployment spec.
+     */
     fn add_arguments(
         mut body: Value,
         args: &[Argument],
@@ -210,6 +217,9 @@ impl Deployment {
         Ok(body)
     }
 
+    /**
+     * Adds ports to the deployment spec.
+     */
     fn add_ports(mut body: Value, ports: &[Port]) -> Result<Value, DeploymentError> {
         if ports.is_empty() {
             return Ok(body);
@@ -219,12 +229,18 @@ impl Deployment {
         }
         let port_list: Vec<Value> = ports
             .iter()
-            .map(|p| json!({ "containerPort": p.port, "protocol": "TCP" }))
+            .map(|p| {
+                let port_num: u32 = p.port.parse().unwrap();
+                json!({ "containerPort": port_num, "protocol": "TCP" })
+            })
             .collect();
         body["spec"]["template"]["spec"]["containers"][0]["ports"] = json!(port_list);
         Ok(body)
     }
 
+    /**
+     * Adds environment variables to the deployment spec.
+     */
     fn add_envs(
         mut body: Value,
         envs: &[VariableEnvironment],
@@ -250,6 +266,9 @@ impl Deployment {
         Ok(body)
     }
 
+    /**
+     * Adds GPU resources to the deployment spec.
+     */
     fn add_compute_gpu(mut body: Value) -> Value {
         body["spec"]["template"]["spec"]["runtimeClassName"] = json!("nvidia");
         body["spec"]["template"]["spec"]["containers"][0]["resources"]["limits"]
@@ -257,6 +276,9 @@ impl Deployment {
         body
     }
 
+    /**
+     * Adds storage to the deployment spec.
+     */
     fn add_storage(
         mut body: Value,
         username: &str,
@@ -291,7 +313,9 @@ impl Deployment {
         Ok(body)
     }
 
-    // Stub — replace with your actual tag parsing logic
+    /**
+     * Parses generic tags in a string, replacing placeholders with actual values.
+     */
     fn parse_generic_tags(
         value: &str,
         hash: &str,
@@ -308,8 +332,9 @@ impl Deployment {
             .replace("{{generated_label}}", generated_label)
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
-
+    /**
+     * Creates a deployment in Kubernetes.
+     */
     pub async fn create(&self, props: CreateDeploymentProps) -> Result<DeploymentResponse, DeploymentError> {
         Self::validate_hash(&props.hash)?;
         let registry = Self::parse_registry_link(&props.registry_link)?;
@@ -317,7 +342,7 @@ impl Deployment {
         let mut body = json!({
             "metadata": {
                 "name": format!("{}{}", props.label, props.hash),
-                "namespace": format!("n{}", props.hash),
+                "namespace": format!("odn-{}", props.hash),
                 "labels": {
                     "app": format!("{}{}", props.label, props.hash),
                     "type": "Deployment",
@@ -341,7 +366,7 @@ impl Deployment {
                             "hash": props.hash
                         },
                         "name": format!("{}{}", props.label, props.hash),
-                        "namespace": format!("n{}", props.hash),
+                        "namespace": format!("odn-{}", props.hash),
                         "annotations": {
                             "kubernetes.io/ingress-bandwidth": props.ingress_bandwidth,
                             "kubernetes.io/egress-bandwidth": props.egress_bandwidth
@@ -388,8 +413,16 @@ impl Deployment {
         body = Self::add_envs(body, &props.envs, &props.hash, &props.username, &props.password, &props.label, &props.generated_label)?;
         body = Self::add_storage(body, &props.username, &props.label, &props.hash, props.has_storage, &props.volume_type)?;
 
-        let url = format!("{}/apis/apps/v1/namespaces/n{}/deployments", self.base_url, props.hash);
-        let result = self.client.post(&url).json(&body).send().await?.json::<Value>().await?;
+        let url = format!("{}/apis/apps/v1/namespaces/odin-{}/deployments", self.base_url, props.hash);
+        println!("[ODIN][K-AGENT][Deployment] POST {url}");
+        let response = self.client.post(&url).json(&body).send().await?;
+        let status = response.status();
+        let result = response.json::<Value>().await?;
+        if !status.is_success() {
+            eprintln!("[ODIN][K-AGENT][Deployment] API returned {status}: {result}");
+        } else {
+            println!("[ODIN][K-AGENT][Deployment] Created successfully: {}", result["metadata"]["name"]);
+        }
 
         Ok(DeploymentResponse {
             result,
@@ -398,32 +431,90 @@ impl Deployment {
         })
     }
 
+    /**
+     * Deletes a deployment in Kubernetes.
+     */
     pub async fn delete(&self, hash: &str) -> Result<Vec<DeploymentResponse>, DeploymentError> {
         Self::validate_hash(hash)?;
-        let names = self.get(hash).await?;
+
+        let url = format!(
+            "{}/apis/apps/v1/namespaces/odn-{}/deployments?labelSelector=type=Deployment,hash={}",
+            self.base_url, hash, hash
+        );
+        let result = self.client.get(&url).send().await?.json::<Value>().await?;
+        let names: Vec<String> = result["items"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .filter_map(|item| item["metadata"]["name"].as_str().map(String::from))
+            .collect();
+
         if names.is_empty() {
             return Ok(vec![]);
         }
         let mut responses = vec![];
         for name in names {
-            responses.push(self.del(hash, &name).await?);
+            let url = format!(
+                "{}/apis/apps/v1/namespaces/odin-{}/deployments/{}",
+                self.base_url, hash, name
+            );
+            let result = self.client.delete(&url).send().await?.json::<Value>().await?;
+            responses.push(DeploymentResponse {
+                result,
+                r#type: "Deployment".to_string(),
+                name,
+            });
         }
         Ok(responses)
     }
 
+    /**
+     * Scales a deployment in Kubernetes by updating the number of replicas.
+     */
     pub async fn scale(&self, hash: &str, replicas: u32) -> Result<Vec<DeploymentResponse>, DeploymentError> {
         Self::validate_hash(hash)?;
-        let names = self.get(hash).await?;
+
+        let url = format!(
+            "{}/apis/apps/v1/namespaces/odin-{}/deployments?labelSelector=type=Deployment,hash={}",
+            self.base_url, hash, hash
+        );
+        let result = self.client.get(&url).send().await?.json::<Value>().await?;
+        let names: Vec<String> = result["items"]
+            .as_array()
+            .unwrap_or(&vec![])
+            .iter()
+            .filter_map(|item| item["metadata"]["name"].as_str().map(String::from))
+            .collect();
+
         let mut responses = vec![];
         for name in names {
-            responses.push(self.put(hash, &name, replicas).await?);
+            let body = json!({
+                "kind": "Scale",
+                "apiVersion": "autoscaling/v1",
+                "metadata": { "name": name, "namespace": format!("odin-{}", hash) },
+                "spec": { "replicas": replicas }
+            });
+            let url = format!(
+                "{}/apis/apps/v1/namespaces/odin-{}/deployments/{}/scale",
+                self.base_url, hash, name
+            );
+            let result = self.client.put(&url).json(&body).send().await?.json::<Value>().await?;
+            responses.push(DeploymentResponse {
+                result,
+                r#type: "Deployment".to_string(),
+                name,
+            });
         }
         Ok(responses)
     }
 
+    /**
+     * Retrieves all pods associated with a given hash in Kubernetes.
+     * This will be called when an application needs to list its pods.
+     */
     pub async fn get_pods(&self, hash: &str) -> Result<Value, DeploymentError> {
         Self::validate_hash(hash)?;
-        let url = format!("{}/api/v1/namespaces/n{}/pods", self.base_url, hash);
+        let url = format!("{}/api/v1/namespaces/odn-{}/pods", self.base_url, hash);
         let mut result = self.client.get(&url).send().await?.json::<Value>().await?;
         if let Some(items) = result["items"].as_array_mut() {
             for item in items.iter_mut() {
@@ -433,9 +524,12 @@ impl Deployment {
         Ok(result)
     }
 
+    /**
+     * Retrieves all deployments associated with a given hash in Kubernetes.
+     */
     pub async fn get_deployments(&self, hash: &str) -> Result<Value, DeploymentError> {
         Self::validate_hash(hash)?;
-        let url = format!("{}/apis/apps/v1/namespaces/n{}/deployments", self.base_url, hash);
+        let url = format!("{}/apis/apps/v1/namespaces/odn-{}/deployments", self.base_url, hash);
         let mut result = self.client.get(&url).send().await?.json::<Value>().await?;
         if let Some(items) = result["items"].as_array_mut() {
             for item in items.iter_mut() {
@@ -445,9 +539,12 @@ impl Deployment {
         Ok(result)
     }
 
+    /**
+     * Retrieves all replicasets associated with a given hash in Kubernetes.
+     */
     pub async fn get_replicasets(&self, hash: &str) -> Result<Value, DeploymentError> {
         Self::validate_hash(hash)?;
-        let url = format!("{}/apis/apps/v1/namespaces/n{}/replicasets", self.base_url, hash);
+        let url = format!("{}/apis/apps/v1/namespaces/odin-{}/replicasets", self.base_url, hash);
         let mut result = self.client.get(&url).send().await?.json::<Value>().await?;
         if let Some(items) = result["items"].as_array_mut() {
             for item in items.iter_mut() {
@@ -457,11 +554,12 @@ impl Deployment {
         Ok(result)
     }
 
-    // ── Private API ───────────────────────────────────────────────────────────
-
+    /**
+     * Retrieves the names of all deployments associated with a given hash in Kubernetes.
+     */
     async fn get(&self, hash: &str) -> Result<Vec<String>, DeploymentError> {
         let url = format!(
-            "{}/apis/apps/v1/namespaces/n{}/deployments?labelSelector=type=Deployment,hash={}",
+            "{}/apis/apps/v1/namespaces/odn-{}/deployments?labelSelector=type=Deployment,hash={}",
             self.base_url, hash, hash
         );
         let result = self.client.get(&url).send().await?.json::<Value>().await?;
@@ -474,9 +572,12 @@ impl Deployment {
         Ok(names)
     }
 
+    /**
+     * Deletes a deployment in Kubernetes by name.
+     */
     async fn del(&self, hash: &str, name: &str) -> Result<DeploymentResponse, DeploymentError> {
         let url = format!(
-            "{}/apis/apps/v1/namespaces/n{}/deployments/{}",
+            "{}/apis/apps/v1/namespaces/odn-{}/deployments/{}",
             self.base_url, hash, name
         );
         let result = self.client.delete(&url).send().await?.json::<Value>().await?;
@@ -487,15 +588,18 @@ impl Deployment {
         })
     }
 
+    /**
+     * Scales a deployment in Kubernetes by updating the number of replicas.
+     */
     async fn put(&self, hash: &str, name: &str, replicas: u32) -> Result<DeploymentResponse, DeploymentError> {
         let body = json!({
             "kind": "Scale",
             "apiVersion": "autoscaling/v1",
-            "metadata": { "name": name, "namespace": format!("n{}", hash) },
+            "metadata": { "name": name, "namespace": format!("odin-{}", hash) },
             "spec": { "replicas": replicas }
         });
         let url = format!(
-            "{}/apis/apps/v1/namespaces/n{}/deployments/{}/scale",
+            "{}/apis/apps/v1/namespaces/odin-{}/deployments/{}/scale",
             self.base_url, hash, name
         );
         let result = self.client.put(&url).json(&body).send().await?.json::<Value>().await?;
